@@ -1,13 +1,10 @@
-import os
+import time
 import requests
 import streamlit as st
-from dotenv import load_dotenv
 
-load_dotenv()
-
-# Hardcoded to your live Render backend
+# HARDCODED LIVE RENDER URL
 BACKEND_URL = "https://social-and-script-idea-generator.onrender.com"
-GENERATE_URL = f"{BACKEND_URL}/content/generate"
+GENERATE_URL = f"{BACKEND_URL}/api/generate"
 
 st.set_page_config(page_title="AI Social Media Generator", page_icon="✦", layout="centered")
 
@@ -63,39 +60,51 @@ if generate_clicked:
         }
         backend_content_type = format_mapping.get(content_format, "ideas")
 
-        # Matching the exact Pydantic schema from your FastAPI backend
         payload = {
             "topic": topic,
             "platform": platform,
             "audience": audience,
             "tone": tone,
-            "content_type": backend_content_type
+            "content_type": backend_content_type,
+            "use_rag": True,
+            "num_recommendations": num_recs
         }
 
-        with st.spinner("Generating content... (First request may take 30 seconds to wake up the server)"):
-            try:
-                # Increased timeout to 120 seconds to handle Render cold starts
-                response = requests.post(GENERATE_URL, json=payload, timeout=120)
-                response.raise_for_status()
-                data = response.json()
-                
-                # Extracting the "result" key from your FastAPI response
-                content = data.get("result", "")
-                
-                if not content.strip():
-                    st.error("The AI returned empty content. Please try again.")
-                else:
-                    st.success("Content generated successfully!")
-                    st.markdown("### Generated Content")
-                    st.markdown(f'<div class="output-card">{content}</div>', unsafe_allow_html=True)
-                    st.write("")
-                    st.download_button("⬇ Download Output", data=content, file_name=f"{platform.lower()}_content.md", mime="text/markdown")
-            except requests.exceptions.ConnectionError:
-                st.error("Could not connect to the backend. Render might be asleep. Please wait 30 seconds and try again.")
-            except requests.HTTPError as e:
-                st.error(f"API Error: {e.response.status_code}")
-                st.code(e.response.text)
-            except Exception as e:
-                st.error(f"An error occurred: {e}")
+        max_retries = 4
+        success = False
+        content = ""
+
+        with st.spinner("Generating content... (If Render is asleep, this may take up to 60 seconds)"):
+            for attempt in range(max_retries):
+                try:
+                    response = requests.post(GENERATE_URL, json=payload, timeout=60)
+                    response.raise_for_status()
+                    data = response.json()
+                    content = data.get("content", "")
+                    success = True
+                    break 
+                except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+                    if attempt < max_retries - 1:
+                        st.info(f"Backend is waking up... Retrying in 5 seconds (Attempt {attempt + 1}/{max_retries})")
+                        time.sleep(5)
+                    else:
+                        st.error(f"Failed to connect after {max_retries} attempts. Render might be down. Error: {e}")
+                except requests.HTTPError as e:
+                    st.error(f"API Error: {e.response.status_code}")
+                    st.code(e.response.text)
+                    break
+                except Exception as e:
+                    st.error(f"An unexpected error occurred: {e}")
+                    break
+
+        if success:
+            if not content.strip():
+                st.error("The AI returned empty content. Please try again.")
+            else:
+                st.success("Content generated successfully!")
+                st.markdown("### Generated Content")
+                st.markdown(content) 
+                st.write("")
+                st.download_button("⬇ Download Output", data=content, file_name=f"{platform.lower()}_content.md", mime="text/markdown")
 
 st.markdown('<div class="footer-text">Developed by Suhana | Kavyasri | Veermani | Rishitha | Charan</div>', unsafe_allow_html=True)
