@@ -75,7 +75,7 @@ if generate_clicked:
         with st.spinner("Generating content... (If Render is asleep, this may take up to 60 seconds)"):
             for attempt in range(max_retries):
                 try:
-                    # Proper SSL verification (No verify=False) since backend is now stable
+                    # No verify=False needed anymore
                     response = requests.post(GENERATE_URL, json=payload, timeout=60)
                     response.raise_for_status()
                     data = response.json()
