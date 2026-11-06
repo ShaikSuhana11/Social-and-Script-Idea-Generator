@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# SECURE: Loads from Render Environment Variables
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 # Changed to a model that Groq actually supports
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama3-8b-8192")
