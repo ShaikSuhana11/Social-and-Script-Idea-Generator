@@ -1,4 +1,5 @@
 import os
+import time
 import requests
 import streamlit as st
 from dotenv import load_dotenv
@@ -63,7 +64,6 @@ if generate_clicked:
         }
         backend_content_type = format_mapping.get(content_format, "ideas")
 
-        # We removed 'use_rag' and 'num_recommendations' because the Swagger schema doesn't expect them
         payload = {
             "topic": topic,
             "platform": platform,
@@ -72,32 +72,43 @@ if generate_clicked:
             "content_type": backend_content_type
         }
 
+        # RETRY LOGIC TO HANDLE RENDER COLD STARTS
+        max_retries = 3
+        success = False
+        content = ""
+
         with st.spinner("Generating content... (If Render is asleep, this may take up to 60 seconds)"):
-            try:
-                # Timeout increased to 180 seconds to allow Render to wake up
-                response = requests.post(GENERATE_URL, json=payload, timeout=180)
-                response.raise_for_status()
-                data = response.json()
-                
-                # The backend returns 'content'
-                content = data.get("content", "")
-                
-                if not content.strip():
-                    st.error("The AI returned empty content. Please try again.")
-                else:
-                    st.success("Content generated successfully!")
-                    st.markdown("### Generated Content")
-                    st.markdown(content) 
-                    st.write("")
-                    st.download_button("⬇ Download Output", data=content, file_name=f"{platform.lower()}_content.md", mime="text/markdown")
-            except requests.exceptions.Timeout:
-                st.error("The request timed out. The backend took too long to respond.")
-            except requests.exceptions.ConnectionError:
-                st.error("Could not connect to the backend. Render is likely waking up. Please wait 30 seconds and click Generate again.")
-            except requests.HTTPError as e:
-                st.error(f"API Error: {e.response.status_code}")
-                st.code(e.response.text)
-            except Exception as e:
-                st.error(f"An unexpected error occurred: {e}")
+            for attempt in range(max_retries):
+                try:
+                    # We use verify=False to bypass any SSL issues on Streamlit Cloud
+                    response = requests.post(GENERATE_URL, json=payload, timeout=60, verify=False)
+                    response.raise_for_status()
+                    data = response.json()
+                    content = data.get("content", "")
+                    success = True
+                    break # If successful, break out of the retry loop
+                except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+                    if attempt < max_retries - 1:
+                        st.info(f"Backend is waking up... Retrying in 5 seconds (Attempt {attempt + 1}/{max_retries})")
+                        time.sleep(5)
+                    else:
+                        st.error(f"Failed to connect after {max_retries} attempts. Render might be down. Error: {e}")
+                except requests.HTTPError as e:
+                    st.error(f"API Error: {e.response.status_code}")
+                    st.code(e.response.text)
+                    break
+                except Exception as e:
+                    st.error(f"An unexpected error occurred: {e}")
+                    break
+
+        if success:
+            if not content.strip():
+                st.error("The AI returned empty content. Please try again.")
+            else:
+                st.success("Content generated successfully!")
+                st.markdown("### Generated Content")
+                st.markdown(content) 
+                st.write("")
+                st.download_button("⬇ Download Output", data=content, file_name=f"{platform.lower()}_content.md", mime="text/markdown")
 
 st.markdown('<div class="footer-text">Developed by Suhana | Kavyasri | Veermani | Rishitha | Charan</div>', unsafe_allow_html=True)
