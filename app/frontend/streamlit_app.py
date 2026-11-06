@@ -1,13 +1,9 @@
-import os
 import time
 import requests
 import streamlit as st
-from dotenv import load_dotenv
 
-load_dotenv()
-
-# Your live Render backend
-BACKEND_URL = os.getenv("BACKEND_URL", "https://social-and-script-idea-generator.onrender.com").rstrip("/")
+# HARDCODED LIVE RENDER URL (No localhost fallback)
+BACKEND_URL = "https://social-and-script-idea-generator.onrender.com"
 GENERATE_URL = f"{BACKEND_URL}/api/generate"
 
 st.set_page_config(page_title="AI Social Media Generator", page_icon="✦", layout="centered")
@@ -72,21 +68,20 @@ if generate_clicked:
             "content_type": backend_content_type
         }
 
-        # RETRY LOGIC TO HANDLE RENDER COLD STARTS
-        max_retries = 3
+        max_retries = 4
         success = False
         content = ""
 
         with st.spinner("Generating content... (If Render is asleep, this may take up to 60 seconds)"):
             for attempt in range(max_retries):
                 try:
-                    # We use verify=False to bypass any SSL issues on Streamlit Cloud
+                    # verify=False prevents SSL errors on Streamlit Cloud
                     response = requests.post(GENERATE_URL, json=payload, timeout=60, verify=False)
                     response.raise_for_status()
                     data = response.json()
                     content = data.get("content", "")
                     success = True
-                    break # If successful, break out of the retry loop
+                    break 
                 except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
                     if attempt < max_retries - 1:
                         st.info(f"Backend is waking up... Retrying in 5 seconds (Attempt {attempt + 1}/{max_retries})")
