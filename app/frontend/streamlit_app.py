@@ -63,23 +63,23 @@ if generate_clicked:
         }
         backend_content_type = format_mapping.get(content_format, "ideas")
 
+        # Exact payload matching your Pydantic schema
         payload = {
             "topic": topic,
             "platform": platform,
             "audience": audience,
             "tone": tone,
-            "content_type": backend_content_type,
-            "num_recommendations": num_recs, # Added to payload
-            "use_rag": True
+            "content_type": backend_content_type
         }
 
-        with st.spinner("Generating content... (First request may take 20s to wake up Render)"):
+        with st.spinner("Generating content... (First request may take up to 50s to wake up Render)"):
             try:
-                response = requests.post(GENERATE_URL, json=payload, timeout=120)
+                # Increased timeout to 180 seconds
+                response = requests.post(GENERATE_URL, json=payload, timeout=180)
                 response.raise_for_status()
                 data = response.json()
                 
-                # Your backend returns 'content', not 'result'
+                # Your backend returns 'content'
                 content = data.get("content", "")
                 
                 if not content.strip():
@@ -90,12 +90,14 @@ if generate_clicked:
                     st.markdown(content) 
                     st.write("")
                     st.download_button("⬇ Download Output", data=content, file_name=f"{platform.lower()}_content.md", mime="text/markdown")
+            except requests.exceptions.Timeout:
+                st.error("The request timed out. The backend is taking too long to respond. Please check if Render is running.")
             except requests.exceptions.ConnectionError:
-                st.error("Could not connect to the backend. Render might be asleep or restarting. Please wait 30 seconds and try again.")
+                st.error("Could not connect to the backend. Render might be asleep. Please go to your Render dashboard, open the backend URL in a new tab to wake it up, wait 30 seconds, and try again.")
             except requests.HTTPError as e:
                 st.error(f"API Error: {e.response.status_code}")
                 st.code(e.response.text)
             except Exception as e:
-                st.error(f"An error occurred: {e}")
+                st.error(f"An unexpected error occurred: {e}")
 
 st.markdown('<div class="footer-text">Developed by Suhana | Kavyasri | Veermani | Rishitha | Charan</div>', unsafe_allow_html=True)
