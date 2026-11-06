@@ -1,4 +1,5 @@
-"""ChromaDB setup, ingestion, and retrieval for RAG."""
+
+"""ChromaDB setup, ingestion, and retrieval for RAG with Lazy Loading."""
 
 import os
 
@@ -24,35 +25,52 @@ COLLECTION_NAME = "brand_knowledge"
 
 
 class RAGService:
-    """ChromaDB-backed retrieval service."""
+    """ChromaDB-backed retrieval service with Lazy Loading."""
 
     def __init__(self, db_path: str = CHROMA_DB_PATH):
-        import torch
-        # Force PyTorch to use only 1 CPU thread to save RAM
-        torch.set_num_threads(1)
-        
         self.db_path = db_path
         os.makedirs(db_path, exist_ok=True)
 
-        # Initialize ChromaDB with telemetry disabled
+        # Initialize ChromaDB (this uses very little memory)
         self.client = chromadb.PersistentClient(
             path=db_path,
             settings=Settings(anonymized_telemetry=False)
         )
         
-        self.embed_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
-            model_name="all-MiniLM-L6-v2"
-        )
-        
-        self.collection = self.client.get_or_create_collection(
-            name=COLLECTION_NAME,
-            embedding_function=self.embed_fn,
-        )
+        # DO NOT load the embedding model or collection here. Keep them as None.
+        self._embed_fn = None
+        self._collection = None
+
+    def _get_embed_fn(self):
+        """Lazy load the embedding model only when needed."""
+        if self._embed_fn is None:
+            import torch
+            torch.set_num_threads(1) # Save memory
+            print("[RAG] Loading embedding model into memory...")
+            self._embed_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
+                model_name="all-MiniLM-L6-v2"
+            )
+        return self._embed_fn
+
+    def _get_collection(self):
+        """Lazy load the collection only when needed."""
+        if self._collection is None:
+            self._collection = self.client.get_or_create_collection(
+                name=COLLECTION_NAME,
+                embedding_function=self._get_embed_fn(),
+            )
+        return self._collection
 
     def ingest_file(self, file_path: Path = KNOWLEDGE_FILE) -> int:
         """Load and index a text file into ChromaDB. Returns number of chunks."""
         if not file_path.exists():
             raise FileNotFoundError(f"Knowledge file not found: {file_path}")
+
+        collection = self._get_collection() # Trigger lazy load
+
+        # If already ingested, skip to save memory and time
+        if collection.count() > 0:
+            return collection.count()
 
         with open(file_path, "r", encoding="utf-8") as f:
             content = f.read()
@@ -61,15 +79,10 @@ class RAGService:
         if not chunks:
             return 0
 
-        # Clear existing entries for idempotent ingestion
-        existing = self.collection.get()
-        if existing and existing.get("ids"):
-            self.collection.delete(ids=existing["ids"])
-
         ids = [f"chunk_{i}" for i in range(len(chunks))]
         metadatas = [{"source": str(file_path), "chunk_index": i} for i in range(len(chunks))]
 
-        self.collection.add(documents=chunks, ids=ids, metadatas=metadatas)
+        collection.add(documents=chunks, ids=ids, metadatas=metadatas)
         return len(chunks)
 
     def _chunk_text(self, text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]:
@@ -89,12 +102,14 @@ class RAGService:
 
     def retrieve(self, query: str, top_k: int = 1) -> str:
         """Return concatenated relevant context for a query."""
-        if self.collection.count() == 0:
-            return ""
+        collection = self._get_collection() # Trigger lazy load
+        
+        # Auto-ingest if database is empty
+        if collection.count() == 0:
+            self.ingest_file()
 
         try:
-            # Note: top_k defaults to 1 here to prevent the ChromaDB warning we saw earlier
-            results = self.collection.query(query_texts=[query], n_results=top_k)
+            results = collection.query(query_texts=[query], n_results=top_k)
             docs = results.get("documents", [[]])[0]
             return "\n\n---\n\n".join(docs)
         except Exception as e:
@@ -111,8 +126,8 @@ def get_rag_service() -> RAGService:
         _rag_service = RAGService()
     return _rag_service
 
-
 def initialize_knowledge_base() -> int:
     """Ingest knowledge file on startup."""
     service = get_rag_service()
     return service.ingest_file()
+
