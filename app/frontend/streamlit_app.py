@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Pointing to your live Render backend
+# Your live Render backend
 BACKEND_URL = os.getenv("BACKEND_URL", "https://social-and-script-idea-generator.onrender.com").rstrip("/")
 GENERATE_URL = f"{BACKEND_URL}/api/generate"
 
@@ -63,7 +63,7 @@ if generate_clicked:
         }
         backend_content_type = format_mapping.get(content_format, "ideas")
 
-        # Exact payload matching your Pydantic schema
+        # We removed 'use_rag' and 'num_recommendations' because the Swagger schema doesn't expect them
         payload = {
             "topic": topic,
             "platform": platform,
@@ -72,14 +72,14 @@ if generate_clicked:
             "content_type": backend_content_type
         }
 
-        with st.spinner("Generating content... (First request may take up to 50s to wake up Render)"):
+        with st.spinner("Generating content... (If Render is asleep, this may take up to 60 seconds)"):
             try:
-                # Increased timeout to 180 seconds
+                # Timeout increased to 180 seconds to allow Render to wake up
                 response = requests.post(GENERATE_URL, json=payload, timeout=180)
                 response.raise_for_status()
                 data = response.json()
                 
-                # Your backend returns 'content'
+                # The backend returns 'content'
                 content = data.get("content", "")
                 
                 if not content.strip():
@@ -91,9 +91,9 @@ if generate_clicked:
                     st.write("")
                     st.download_button("⬇ Download Output", data=content, file_name=f"{platform.lower()}_content.md", mime="text/markdown")
             except requests.exceptions.Timeout:
-                st.error("The request timed out. The backend is taking too long to respond. Please check if Render is running.")
+                st.error("The request timed out. The backend took too long to respond.")
             except requests.exceptions.ConnectionError:
-                st.error("Could not connect to the backend. Render might be asleep. Please go to your Render dashboard, open the backend URL in a new tab to wake it up, wait 30 seconds, and try again.")
+                st.error("Could not connect to the backend. Render is likely waking up. Please wait 30 seconds and click Generate again.")
             except requests.HTTPError as e:
                 st.error(f"API Error: {e.response.status_code}")
                 st.code(e.response.text)
