@@ -24,6 +24,8 @@ class RAGService:
     """ChromaDB-backed retrieval service."""
 
     def __init__(self, db_path: str = CHROMA_DB_PATH):
+        import torch
+        torch.set_num_threads(1)
         self.db_path = db_path
         os.makedirs(db_path, exist_ok=True)
 
