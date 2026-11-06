@@ -5,8 +5,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
-GENERATE_URL = f"{BACKEND_URL}/api/generate"
+# Hardcoded to your live Render backend, but allows .env override if needed
+BACKEND_URL = os.getenv("BACKEND_URL", "https://social-and-script-idea-generator.onrender.com").rstrip("/")
+# Changed from /api/generate to /content/generate to match your FastAPI routes
+GENERATE_URL = f"{BACKEND_URL}/content/generate"
 
 st.set_page_config(page_title="AI Social Media Generator", page_icon="✦", layout="centered")
 
@@ -44,7 +46,6 @@ with st.container(border=True):
     with col5: 
         tone = st.selectbox("Tone of Voice", ["Professional", "Casual", "Witty", "Inspirational", "Educational"])
     with col6:
-        # Added Number of Recommendations input
         num_recs = st.number_input("Number of Recommendations", min_value=1, max_value=10, value=3, step=1)
 
     st.write("")
@@ -63,34 +64,36 @@ if generate_clicked:
         }
         backend_content_type = format_mapping.get(content_format, "ideas")
 
+        # Note: num_recommendations and use_rag are ignored by your current Pydantic schema, 
+        # but we leave them here so the request doesn't break.
         payload = {
             "topic": topic,
             "platform": platform,
             "audience": audience,
             "tone": tone,
-            "content_type": backend_content_type,
-            "use_rag": True,
-            "num_recommendations": num_recs  # Added to payload
+            "content_type": backend_content_type
         }
 
-        with st.spinner("Generating content..."):
+        with st.spinner("Generating content... (First request may take 20s to wake up Render)"):
             try:
                 response = requests.post(GENERATE_URL, json=payload, timeout=120)
                 response.raise_for_status()
                 data = response.json()
                 
-                content = data.get("content", "")
+                # Changed from "content" to "result" to match your FastAPI response
+                content = data.get("result", "")
                 
                 if not content.strip():
                     st.error("The AI returned empty content. Please try again.")
                 else:
                     st.success("Content generated successfully!")
                     st.markdown("### Generated Content")
-                    st.markdown(f'<div class="output-card">{content}</div>', unsafe_allow_html=True)
+                    # Using st.markdown directly works better for LLM output formatting
+                    st.markdown(content) 
                     st.write("")
                     st.download_button("⬇ Download Output", data=content, file_name=f"{platform.lower()}_content.md", mime="text/markdown")
             except requests.exceptions.ConnectionError:
-                st.error("Could not connect to the backend. Is the FastAPI server running?")
+                st.error("Could not connect to the backend. Render might be asleep or restarting. Please wait 30 seconds and try again.")
             except requests.HTTPError as e:
                 st.error(f"API Error: {e.response.status_code}")
                 st.code(e.response.text)
