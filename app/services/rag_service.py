@@ -1,6 +1,12 @@
 """ChromaDB setup, ingestion, and retrieval for RAG."""
 
+
 import os
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
 from typing import List, Optional
 from pathlib import Path
 import chromadb
