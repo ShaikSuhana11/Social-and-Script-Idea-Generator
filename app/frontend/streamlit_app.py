@@ -5,10 +5,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Hardcoded to your live Render backend, but allows .env override if needed
+# Pointing to your live Render backend
 BACKEND_URL = os.getenv("BACKEND_URL", "https://social-and-script-idea-generator.onrender.com").rstrip("/")
-# Changed from /api/generate to /content/generate to match your FastAPI routes
-GENERATE_URL = f"{BACKEND_URL}/content/generate"
+GENERATE_URL = f"{BACKEND_URL}/api/generate"
 
 st.set_page_config(page_title="AI Social Media Generator", page_icon="✦", layout="centered")
 
@@ -64,14 +63,14 @@ if generate_clicked:
         }
         backend_content_type = format_mapping.get(content_format, "ideas")
 
-        # Note: num_recommendations and use_rag are ignored by your current Pydantic schema, 
-        # but we leave them here so the request doesn't break.
         payload = {
             "topic": topic,
             "platform": platform,
             "audience": audience,
             "tone": tone,
-            "content_type": backend_content_type
+            "content_type": backend_content_type,
+            "num_recommendations": num_recs, # Added to payload
+            "use_rag": True
         }
 
         with st.spinner("Generating content... (First request may take 20s to wake up Render)"):
@@ -80,15 +79,14 @@ if generate_clicked:
                 response.raise_for_status()
                 data = response.json()
                 
-                # Changed from "content" to "result" to match your FastAPI response
-                content = data.get("result", "")
+                # Your backend returns 'content', not 'result'
+                content = data.get("content", "")
                 
                 if not content.strip():
                     st.error("The AI returned empty content. Please try again.")
                 else:
                     st.success("Content generated successfully!")
                     st.markdown("### Generated Content")
-                    # Using st.markdown directly works better for LLM output formatting
                     st.markdown(content) 
                     st.write("")
                     st.download_button("⬇ Download Output", data=content, file_name=f"{platform.lower()}_content.md", mime="text/markdown")
