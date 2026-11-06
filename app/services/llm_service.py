@@ -8,7 +8,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+# Changed to a model that Groq actually supports
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama3-8b-8192")
 
 
 class LLMServiceError(Exception):
@@ -61,8 +62,11 @@ class LLMService:
             return content.strip()
 
         except GroqError as e:
+            # This prints the real error to Render logs
+            print(f"REAL GROQ ERROR: {repr(e)}")
             raise LLMServiceError(f"Groq API error: {str(e)}") from e
         except Exception as e:
+            print(f"REAL LLM ERROR: {repr(e)}")
             raise LLMServiceError(f"Unexpected LLM error: {str(e)}") from e
 
 
