@@ -1,15 +1,18 @@
 """ChromaDB setup, ingestion, and retrieval for RAG."""
 
-
 import os
+
+# --- CRITICAL MEMORY LIMITS FOR RENDER FREE TIER ---
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
+
 from typing import List, Optional
 from pathlib import Path
 import chromadb
+from chromadb.config import Settings
 from chromadb.utils import embedding_functions
 from dotenv import load_dotenv
 
@@ -25,14 +28,22 @@ class RAGService:
 
     def __init__(self, db_path: str = CHROMA_DB_PATH):
         import torch
+        # Force PyTorch to use only 1 CPU thread to save RAM
         torch.set_num_threads(1)
+        
         self.db_path = db_path
         os.makedirs(db_path, exist_ok=True)
 
-        self.client = chromadb.PersistentClient(path=db_path)
+        # Initialize ChromaDB with telemetry disabled
+        self.client = chromadb.PersistentClient(
+            path=db_path,
+            settings=Settings(anonymized_telemetry=False)
+        )
+        
         self.embed_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
             model_name="all-MiniLM-L6-v2"
         )
+        
         self.collection = self.client.get_or_create_collection(
             name=COLLECTION_NAME,
             embedding_function=self.embed_fn,
@@ -76,12 +87,13 @@ class RAGService:
 
         return [c for c in chunks if c]
 
-    def retrieve(self, query: str, top_k: int = 3) -> str:
+    def retrieve(self, query: str, top_k: int = 1) -> str:
         """Return concatenated relevant context for a query."""
         if self.collection.count() == 0:
             return ""
 
         try:
+            # Note: top_k defaults to 1 here to prevent the ChromaDB warning we saw earlier
             results = self.collection.query(query_texts=[query], n_results=top_k)
             docs = results.get("documents", [[]])[0]
             return "\n\n---\n\n".join(docs)
